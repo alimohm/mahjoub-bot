@@ -1,4 +1,4 @@
-import os
+import os # إضافة مكتبة النظام لجلب المنفذ من Render
 from flask import Flask, request, jsonify
 import requests
 import urllib.parse
@@ -11,7 +11,7 @@ app = Flask(__name__)
 # --- إعدادات واتساب محجوب أونلاين ---
 TEXTMEBOT_API_KEY = "CWEMDRmhtq4e"
 
-# قاموس ترجمة المدن (نفس الذي طلبته)
+# قاموس ترجمة المدن
 CITY_MAP = {
     "67b9e47c7e7fbc758fd244ea": "الحديدة",
     "67b9e47c7e7fbc758fd244eb": "عدن",
@@ -43,7 +43,7 @@ def mahjoub_auto_receipt_v38():
         
         event = payload.get('event', 'order.created')
         order_id = order.get('handel', '0000')
-        phone = str(customer.get('phone1', '')).replace('+', '').replace(' ', '').strip()
+        phone = str(customer.get('phone1', '')).replace('+', '').replace(' ', '')
         tracking_link = f"https://mahjoub.online/customer/thank-you/{order_id}"
         full_time = datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
 
@@ -66,7 +66,7 @@ def mahjoub_auto_receipt_v38():
         elif any(x in st for x in ["شحن", "تم الإرسال"]):
             extra_note = "\n🚚 *إشعار:* تم تسليم طلبكم لشركة الشحن، وهو في الطريق إليكم الآن."
 
-        # تنسيق النظام (نفس التصميم تماماً)
+        # تنسيق النظام
         divider = "╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼"
         footer = "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n*نظام محجوب أونلاين | سوقك الذكي*"
 
@@ -118,7 +118,7 @@ def mahjoub_auto_receipt_v38():
     except Exception as e:
         return jsonify({"status": "error"}), 200
 
+# --- الجزء المعدل للتشغيل على Render ---
 if __name__ == '__main__':
-    # هذا السطر هو السر ليعمل على Render بدلاً من النفق الضعيف
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)
