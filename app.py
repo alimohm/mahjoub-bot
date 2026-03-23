@@ -3,43 +3,70 @@ import requests
 
 app = Flask(__name__)
 
-# إعدادات البوت من TextMeBot
+# --- إعدادات البوت من TextMeBot ---
+# الـ API Key الخاص بك (تأكد من بقائه كما هو)
 TEXTME_BOT_KEY = "CWEMDRmhtq4e" 
 
 def send_whatsapp(phone, message):
-    url = f"https://api.textmebot.com/send.php?recipient={phone}&apikey={TEXTME_BOT_KEY}&text={message}"
+    """دالة لإرسال الرسالة عبر واجهة TextMeBot"""
+    url = "https://api.textmebot.com/send.php"
+    params = {
+        "recipient": phone,
+        "apikey": TEXTME_BOT_KEY,
+        "text": message
+    }
     try:
-        response = requests.get(url)
+        response = requests.get(url, params=params)
+        print(f"TextMeBot Response: {response.text}")
         return response.status_code
-    except:
+    except Exception as e:
+        print(f"Error sending WhatsApp: {e}")
         return 500
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
     data = request.json
-    # استخراج نوع الحدث (نبحث عن الكلمة سواء كانت بـ topic أو بدون)
-    event = data.get('event', '')
+    
+    # استخراج نوع الحدث (نبحث عن الكلمة المفتاحية لتجنب مشاكل التسمية في قمرة)
+    event = data.get('event', '').lower()
     order_data = data.get('data', {})
     
-    # استخراج بيانات العميل والطلب
+    # استخراج بيانات العميل (الاسم والهاتف)
     lead = order_data.get('salesLead', {})
-    phone = lead.get('phone1', '').replace('+', '')
+    raw_phone = lead.get('phone1', '') or lead.get('phone2', '')
+    phone = raw_phone.replace('+', '').strip()
+    
     name = lead.get('firstName', 'عميلنا العزيز')
     order_no = order_data.get('handel', 'غير معروف')
-    total = order_data.get('totalPriceWithTax', 0)
+    total = order_data.get('priceWithShipping', 0) or order_data.get('totalPriceWithTax', 0)
     status_title = order_data.get('status', {}).get('title', 'قيد المعالجة')
 
-    # رسالة عند إنشاء طلب جديد (الفاتورة المبسطة)
-    if "order.created" in event or "order.placed" in event:
-        msg = f"مرحباً {name} 👋\nشكراً لطلبك من *محجوب أونلاين* 🛍️\n\nرقم طلبك: #{order_no}\nالإجمالي: {total} ريال\nالحالة: {status_title}\n\nسيتم إشعارك فور تحديث حالة الطلب. شكراً لثقتك بنا! ✨"
+    # 1. حالة إنشاء طلب جديد (Welcome & Invoice)
+    if "created" in event or "placed" in event:
+        msg = (
+            f"مرحباً {name} 👋\n"
+            f"شكراً لطلبك من *محجوب أونلاين* 🛍️\n\n"
+            f"📦 *تفاصيل الطلب:*\n"
+            f"رقم الطلب: #{order_no}\n"
+            f"الإجمالي: {total} ريال\n"
+            f"الحالة: {status_title}\n\n"
+            f"سيتم إشعارك فور تحديث حالة طلبك. شكراً لثقتك بنا! ✨"
+        )
         send_whatsapp(phone, msg)
         
-    # رسالة عند تحديث الحالة من الإدارة
-    elif "order.updated" in event:
-        msg = f"عزيزي {name} 👋\nتم تحديث حالة طلبك رقم #{order_no}\n\nالحالة الجديدة: *{status_title}* ✅\n\nشكراً لتسوقك من سوقك الذكي."
+    # 2. حالة تحديث الطلب من الإدارة (Order Update)
+    elif "updated" in event:
+        msg = (
+            f"عزيزي {name} 👋\n"
+            f"تم تحديث حالة طلبك رقم #{order_no} في *سوقك الذكي*\n\n"
+            f"🚚 *الحالة الجديدة:* {status_title}\n\n"
+            f"نشكرك لتسوقك معنا!"
+        )
         send_whatsapp(phone, msg)
 
-    return jsonify({"status": "success"}), 200
+    return jsonify({"status": "success", "message": "Webhook received"}), 200
 
+# تشغيل السيرفر
 if __name__ == '__main__':
+    # Render يتطلب التشغيل على Port 5000 أو المنفذ الذي يحدده النظام
     app.run(host='0.0.0.0', port=5000)
