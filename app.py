@@ -5,6 +5,7 @@ import urllib.parse
 
 app = Flask(__name__)
 
+# جلب المفاتيح من Render
 MAHJOUB_KEY = os.environ.get("MAHJOUB_ONLINE_KEY")
 TEXTMEBOT_KEY = os.environ.get("TEXTMEBOT_KEY")
 GRAPHQL_URL = "https://mahjoub.online/admin/graphql"
@@ -26,13 +27,16 @@ def get_order_data(order_id):
     except:
         return None
 
-@app.route('/webhook', methods=['POST', 'GET'])
+@app.route('/webhook', methods=['POST', 'GET', 'HEAD'])
 def mahjoub_core_webhook():
-    if request.method == 'GET': return "SYSTEM_ONLINE", 200
+    # هذا السطر يمنع الـ 404 عند الفحص البسيط
+    if request.method in ['GET', 'HEAD']: return "SYSTEM_ACTIVE", 200
     
     try:
         payload = request.get_json()
-        order_internal_id = payload.get('data', {}).get('id')
+        # سحب الـ ID من البيانات التي أرسلتها في الـ Payload
+        order_internal_id = payload.get('data', {}).get('_id') 
+        
         order = get_order_data(order_internal_id)
         
         if order and order.get('salesLead'):
