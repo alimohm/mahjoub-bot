@@ -5,7 +5,7 @@ import urllib.parse
 from datetime import datetime, timedelta
 import json
 import re
-from fpdf import FPDF # مكتبة رسم الفواتير
+from fpdf import FPDF
 
 app = Flask(__name__)
 
@@ -24,7 +24,7 @@ def get_real_text(val):
     if len(txt) >= 20 and re.match(r'^[a-f0-9]+$', txt): return None
     return txt
 
-# --- دالة صناعة قالب الفاتورة PDF برمجياً ---
+# --- دالة صناعة قالب الفاتورة PDF برمجياً برقم طلب محدد ---
 def create_invoice_pdf(order_id, customer_name, total, date_str):
     pdf = FPDF()
     pdf.add_page()
@@ -57,20 +57,23 @@ def create_invoice_pdf(order_id, customer_name, total, date_str):
     # التذييل
     pdf.ln(20)
     pdf.set_font("Arial", 'I', 10)
-    pdf.cell(200, 10, txt="Thank you for choosing our store! Your satisfaction is our priority.", ln=True, align='C')
+    pdf.cell(200, 10, txt="Thank you for choosing our store!", ln=True, align='C')
     pdf.cell(200, 10, txt="Mahjoub Online | Your Smart Market", ln=True, align='C')
     
-    file_path = "invoice_order.pdf"
+    # اسم الملف فريد لكل طلب لمنع التداخل
+    file_path = f"invoice_{order_id}.pdf"
     pdf.output(file_path)
     return file_path
 
-# --- رابط تحميل الفاتورة (الذي يفتحه العميل) ---
-@app.route('/download/test.pdf')
-def download_test_pdf():
-    # سيقوم السيرفر بصناعة ملف PDF باسم "فاتورة افتراضية" عند الضغط على الرابط
-    # لاحقاً يمكننا جعل البيانات متغيرة حسب كل طلب
-    invoice_file = create_invoice_pdf("10000918", "Valued Customer", "352", datetime.now().strftime("%Y-%m-%d"))
-    return send_from_directory(os.getcwd(), invoice_file)
+# --- رابط تحميل الفاتورة المتغير (يستقبل رقم الطلب من الرابط) ---
+@app.route('/download/invoice_<order_id>.pdf')
+def download_custom_invoice(order_id):
+    # السيرفر يبحث عن الملف، إذا لم يكن موجوداً (بسبب إعادة تشغيل السيرفر مثلاً) يقوم بإنشاء واحد افتراضي
+    file_name = f"invoice_{order_id}.pdf"
+    if not os.path.exists(file_name):
+        create_invoice_pdf(order_id, "Valued Customer", "---", datetime.now().strftime("%Y-%m-%d"))
+    
+    return send_from_directory(os.getcwd(), file_name)
 
 @app.route('/webhook', methods=['POST', 'GET', 'HEAD'])
 def mahjoub_auto_receipt_v38():
@@ -94,28 +97,34 @@ def mahjoub_auto_receipt_v38():
         status_title = status_info.get('title', 'قيد الإنتظار')
         is_paid = order.get('isPaid', False)
         pay_text = "✅ *مدفوع*" if is_paid else "❌ *غير مدفوع*"
-        
+
+        # إنشاء الفاتورة فور استلام الطلب وتخزينها باسم فريد
+        customer_full_name = f"{customer.get('firstName', '')} {customer.get('lastName', '')}"
+        total_price = order.get('priceWithShipping', 0)
+        create_invoice_pdf(order_id, customer_full_name, total_price, yemen_time.strftime("%Y-%m-%d"))
+
         divider = "╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼"
         footer = "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n*نظام محجوب أونلاين | سوقك الذكي*"
 
         if event == "order.created":
             city = get_real_text(customer.get('cityName')) or "اليمن"
-            pdf_link = f"{BASE_URL}/download/test.pdf"
+            # الرابط الآن يحتوي على رقم الطلب الفريد لكل عميل
+            pdf_link = f"{BASE_URL}/download/invoice_{order_id}.pdf"
             
             msg = (
                 "✨ *إشعار نظام: تم إنشاء طلب جديد* ✨\n\n"
                 f"🧾 *فاتورة رقم:* `{order_id}`\n"
                 f"{divider}\n"
-                f"👤 *العميل:* {customer.get('firstName', '')} {customer.get('lastName', '')}\n"
+                f"👤 *العميل:* {customer_full_name}\n"
                 f"📍 *الموقع:* {city}\n"
                 f"{divider}\n"
-                f"💵 *الإجمالي النهائي:* `{order.get('priceWithShipping', 0)}` ريال\n"
+                f"💵 *الإجمالي النهائي:* `{total_price}` ريال\n"
                 f"{divider}\n"
                 f"🚚 *الحالة:* 【 {status_title} 】\n"
                 f"📝 *الدفع:* {pay_text}\n"
                 f"{divider}\n"
                 f"🕒 *توقيت الطلب:* `{full_time}`\n"
-                f"📄 *تحميل فاتورة PDF:* {pdf_link}\n\n"
+                f"📄 *تحميل فاتورتك الخاصة PDF:*\n{pdf_link}\n\n"
                 f"{footer}"
             )
         else:
@@ -124,7 +133,9 @@ def mahjoub_auto_receipt_v38():
                 f"{divider}\n"
                 f"📦 *رقم المنتج:* `{order_id}`\n"
                 f"🚚 *الحالة:* 【 {status_title} 】\n"
+                f"📝 *الدفع:* {pay_text}\n"
                 f"{divider}\n"
+                f"🕒 *وقت التحديث:* `{full_time}`\n"
                 f"🔗 *تتبع:* {tracking_link}\n\n"
                 f"{footer}"
             )
