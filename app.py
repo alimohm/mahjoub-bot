@@ -7,7 +7,6 @@ import json
 
 app = Flask(__name__)
 
-# --- إعدادات واتساب محجوب أونلاين ---
 TEXTMEBOT_API_KEY = "CWEMDRmhtq4e"
 
 def smart_parse(data):
@@ -16,45 +15,42 @@ def smart_parse(data):
     except: return {}
 
 @app.route('/webhook', methods=['POST', 'GET', 'HEAD'])
-def mahjoub_online_final_system():
+def mahjoub_precision_system():
     if request.method in ['GET', 'HEAD']: return "OK", 200
     
     try:
-        # استقبال البيانات من قمرة
         payload = smart_parse(request.get_data(as_text=True))
         order = smart_parse(payload.get('data', payload))
         customer = smart_parse(order.get('customer', order.get('salesLead', {})))
         
-        # --- استخراج الرقم المتغير ديناميكياً ---
-        # الكود يبحث عن الرقم (مثل 1000000930) في خانة handle
-        order_handle = str(order.get('handle') or order.get('handel') or "0000")
+        # المعرفات الأساسية
+        order_handle = str(order.get('handle') or "0000")
+        # المعرف الطويل للفاتورة (من قاعدة البيانات)
+        order_id = str(order.get('_id') or "") 
         
-        # تجهيز رقم الهاتف (اليمن 967)
         phone = customer.get('phone1') or customer.get('phone2') or order.get('phone')
         phone = str(phone).replace('+', '').replace(' ', '') if phone else ""
         if phone and not phone.startswith('967'): phone = '967' + phone
 
-        # --- روابط النظام الذكي ---
-        # الرابط الذي يفتح صفحة التتبع الرسمية ومنها يحمل العميل الـ PDF
+        # --- الفصل بين الروابط بدقة ---
+        # 1. رابط التتبع (لحالة المنتج فقط)
         tracking_link = f"https://mahjoub.online/customer/thank-you/{order_handle}"
         
-        # توقيت اليمن المحلي (GMT+3)
+        # 2. رابط الفاتورة (التي تحتوي على اسم العميل والبيانات الكاملة)
+        # ملاحظة: استخدمنا المعرف الداخلي لضمان فتح صفحة الفاتورة المصممة
+        invoice_link = f"https://mahjoub.online/orders/invoice/{order_id}"
+        
         yemen_time = datetime.utcnow() + timedelta(hours=3)
         full_time = yemen_time.strftime("%Y/%m/%d - %I:%M %p") 
 
-        # الحالة والدفع
         status_title = order.get('status_name') or smart_parse(order.get('status', {})).get('title', 'قيد الإنتظار')
         is_paid = order.get('isPaid', False)
         pay_text = "✅ *مدفوع*" if is_paid else "❌ *غير مدفوع*"
         
-        extra_note = ""
-        if not is_paid and not any(x in status_title for x in ["إلغاء", "ملغي"]):
-            extra_note = "\n⚠️ *يرجى تزويدنا بصورة القسيمة المالية (إيصال السداد) هنا لمتابعة تنفيذ طلبكم.*"
-
-        # تنسيق الرسالة الملكي
         divider = "╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼"
         footer = "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n*نظام محجوب أونلاين | سوقك الذكي*"
 
+        # صياغة الرسالة مع الفصل الواضح بين التتبع والفاتورة
         msg = (
             "✨ *إشعار نظام: تم إنشاء طلب جديد* ✨\n\n"
             f"🧾 *فاتورة رقم:* `{order_handle}`\n"
@@ -67,16 +63,14 @@ def mahjoub_online_final_system():
             f"{divider}\n"
             f"🚚 *حالة المنتج:* 【 {status_title} 】\n"
             f"📝 *حالة الدفع:* {pay_text}\n"
-            f"{extra_note}\n"
             f"{divider}\n"
-            f"🕒 *توقيت الطلب:* `{full_time}`\n"
-            f"🔗 *رابط تتبع الطلب والفاتورة:* \n{tracking_link}\n\n"
-            f"📦 *مرفق أدناه رابط فاتورة PDF إلكترونية لطلبكم:*\n"
-            f"{tracking_link}\n\n"
+            f"🕒 *توقيت الطلب:* `{full_time}`\n\n"
+            f"🔗 *رابط تتبع حالة الشحن:* \n{tracking_link}\n\n"
+            f"📄 *رابط عرض الفاتورة التفصيلية:* \n{invoice_link}\n\n"
+            f"⚠️ *يرجى إرسال صورة إيصال السداد هنا في حال كان الطلب غير مدفوع.*\n"
             f"{footer}"
         )
 
-        # الإرسال الفعلي
         if phone and len(phone) > 5:
             api_url = f"https://api.textmebot.com/send.php?recipient={phone}&apikey={TEXTMEBOT_API_KEY}&text={urllib.parse.quote(msg)}"
             requests.get(api_url, timeout=10)
@@ -86,5 +80,4 @@ def mahjoub_online_final_system():
         return jsonify({"status": "error", "message": str(e)}), 200
 
 if __name__ == '__main__':
-    # بورت 10000 الخاص بـ Render
     app.run(host='0.0.0.0', port=10000)
