@@ -18,47 +18,50 @@ def smart_parse(data):
 
 @app.route('/download/<filename>')
 def serve_invoice(filename):
-    # سيقدم الملف الثابت حالياً، ويمكنك لاحقاً ربطه بنظام توليد تلقائي
+    # تقديم ملف test.pdf الموجود في المستودع حالياً
     return send_from_directory('.', filename)
 
 @app.route('/webhook', methods=['POST', 'GET', 'HEAD'])
-def mahjoub_dynamic_engine():
+def mahjoub_precision_engine():
     if request.method in ['GET', 'HEAD']: return "OK", 200
     
     try:
-        # 1. سحب البيانات الخام من منصة قمرة
+        # 1. استقبال البيانات وتصحيح المسارات
         payload = smart_parse(request.get_data(as_text=True))
         order = smart_parse(payload.get('data', payload))
-        customer = smart_parse(order.get('salesLead', order.get('customer', {})))
         
-        # 2. استخراج المعلومات الأساسية (المتغيرة لكل عميل)
-        order_handle = str(order.get('handle') or "0000")
+        # سحب رقم الفاتورة (Handle) بدقة لتجنب الـ 0000
+        order_handle = str(order.get('handle') or order.get('handel') or "0000")
+        
+        # سحب بيانات العميل (SalesLead أو Customer)
+        customer = smart_parse(order.get('salesLead', order.get('customer', {})))
         cust_name = f"{customer.get('firstName', '')} {customer.get('lastName', '')}".strip() or "عميلنا العزيز"
         address = f"{customer.get('cityName', 'اليمن')} - {customer.get('district', 'الشارع')}"
         
-        # 3. تفاصيل المنتجات والأسعار (ديناميكية)
+        # 2. جرد المنتجات بطريقة احترافية
         items = order.get('items', [])
-        product_details = ""
-        total_qty = 0
-        for item in items:
-            name = item.get('product_name', 'منتج')
-            qty = item.get('quantity', 1)
-            price = item.get('price', 0)
-            product_details += f"📦 *{name}* (×{qty}) - `{price}` ريال\n"
-            total_qty += int(qty)
-
-        tax = order.get('taxAmount', 0)
-        final_total = order.get('total', order.get('priceWithShipping', 0))
+        product_summary = ""
+        total_items_count = 0
         
-        # 4. الحالة والوقت
+        for item in items:
+            p_name = item.get('product_name', 'منتج')
+            p_qty = int(item.get('quantity', 1))
+            p_price = item.get('price', 0)
+            product_summary += f"📦 *{p_name}* (×{p_qty}) - `{p_price}` ريال\n"
+            total_items_count += p_qty
+
+        # 3. الحسابات المالية والحالة
+        tax = order.get('taxAmount', 0)
+        final_total = order.get('total', 0)
         status = order.get('status_name') or "قيد الإنتظار"
         is_paid = order.get('isPaid', False)
         pay_status = "✅ *مدفوع*" if is_paid else "❌ *غير مدفوع*"
         
-        yemen_time = datetime.utcnow() + timedelta(hours=3)
-        time_str = yemen_time.strftime("%Y/%m/%d - %I:%M %p")
+        # توقيت اليمن GMT+3
+        y_time = datetime.utcnow() + timedelta(hours=3)
+        time_display = y_time.strftime("%Y/%m/%d - %I:%M %p")
 
-        # 5. بناء الرسالة بنفس التنسيق الذي طلبته تماماً
+        # 4. صياغة الرسالة (تطابق طلبك 100%)
         divider = "╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼"
         msg = (
             "✨ *إشعار نظام: تم إنشاء طلب جديد* ✨\n\n"
@@ -67,8 +70,8 @@ def mahjoub_dynamic_engine():
             f"👤 *العميل:* {cust_name}\n"
             f"📍 *موقع التوصيل:* {address}\n"
             f"{divider}\n"
-            f"{product_details}"
-            f"🔢 *عدد المنتجات:* {total_qty}\n"
+            f"{product_summary}"
+            f"🔢 *عدد المنتجات:* {total_items_count}\n"
             f"💰 *الضريبة:* `{tax}` ريال\n"
             f"💵 *الإجمالي النهائي:* `{final_total}` ريال\n"
             f"{divider}\n"
@@ -76,15 +79,15 @@ def mahjoub_dynamic_engine():
             f"📝 *حالة الدفع:* {pay_status}\n"
             "⚠️ *يرجى تزويدنا بصورة القسيمة المالية (إيصال السداد) هنا لمتابعة تنفيذ طلبكم.*"
             f"\n{divider}\n"
-            f"🕒 *توقيت الطلب:* `{time_str}`\n"
+            f"🕒 *توقيت الطلب:* `{time_display}`\n"
             f"🔗 *رابط التتبع:* https://mahjoub.online/customer/thank-you/{order_handle}\n\n"
             "📦 *مرفق أدناه فاتورة PDF إلكترونية لطلبكم:*\n"
-            f"{BASE_URL}/download/test.pdf\n\n" # رابط الفاتورة من سيرفرك
+            f"{BASE_URL}/download/test.pdf\n\n"
             "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
             "*نظام محجوب أونلاين | سوقك الذكي*"
         )
 
-        # 6. الإرسال للعميل
+        # 5. الإرسال
         phone = str(customer.get('phone1') or order.get('phone', '')).replace('+', '').replace(' ', '')
         if phone and not phone.startswith('967'): phone = '967' + phone
 
