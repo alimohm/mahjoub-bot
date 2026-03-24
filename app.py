@@ -7,7 +7,7 @@ import json
 
 app = Flask(__name__)
 
-# --- الإعدادات (TEXTMEBOT) ---
+# --- إعدادات واتساب محجوب أونلاين ---
 TEXTMEBOT_API_KEY = "CWEMDRmhtq4e"
 
 def smart_parse(data):
@@ -16,49 +16,45 @@ def smart_parse(data):
     except: return {}
 
 @app.route('/webhook', methods=['POST', 'GET', 'HEAD'])
-def mahjoub_online_v44():
-    # الرد على اختبارات Render و Qumra الأولية
-    if request.method in ['GET', 'HEAD']: 
-        return "OK", 200
+def mahjoub_online_final_system():
+    if request.method in ['GET', 'HEAD']: return "OK", 200
     
     try:
-        # استقبال ومعالجة البيانات القادمة من قمرة
+        # استقبال البيانات من قمرة
         payload = smart_parse(request.get_data(as_text=True))
         order = smart_parse(payload.get('data', payload))
         customer = smart_parse(order.get('customer', order.get('salesLead', {})))
         
-        # استخراج المعرفات (رقم الفاتورة 1000000xxx)
+        # --- استخراج الرقم المتغير ديناميكياً ---
+        # الكود يبحث عن الرقم (مثل 1000000930) في خانة handle
         order_handle = str(order.get('handle') or order.get('handel') or "0000")
         
-        # تنسيق رقم الهاتف (إضافة رمز اليمن 967)
+        # تجهيز رقم الهاتف (اليمن 967)
         phone = customer.get('phone1') or customer.get('phone2') or order.get('phone')
         phone = str(phone).replace('+', '').replace(' ', '') if phone else ""
-        if phone and not phone.startswith('967'): 
-            phone = '967' + phone
+        if phone and not phone.startswith('967'): phone = '967' + phone
 
-        # --- روابط النظام الملكي ---
-        # الرابط المعتمد لصفحة "شكراً لك" وتتبع الطلب
+        # --- روابط النظام الذكي ---
+        # الرابط الذي يفتح صفحة التتبع الرسمية ومنها يحمل العميل الـ PDF
         tracking_link = f"https://mahjoub.online/customer/thank-you/{order_handle}"
         
         # توقيت اليمن المحلي (GMT+3)
         yemen_time = datetime.utcnow() + timedelta(hours=3)
         full_time = yemen_time.strftime("%Y/%m/%d - %I:%M %p") 
 
-        # الحالة المالية واللوجستية
+        # الحالة والدفع
         status_title = order.get('status_name') or smart_parse(order.get('status', {})).get('title', 'قيد الإنتظار')
         is_paid = order.get('isPaid', False)
         pay_text = "✅ *مدفوع*" if is_paid else "❌ *غير مدفوع*"
         
-        # ملاحظة السداد للطلبات غير المدفوعة
         extra_note = ""
         if not is_paid and not any(x in status_title for x in ["إلغاء", "ملغي"]):
             extra_note = "\n⚠️ *يرجى تزويدنا بصورة القسيمة المالية (إيصال السداد) هنا لمتابعة تنفيذ طلبكم.*"
 
-        # عناصر التنسيق البصري
+        # تنسيق الرسالة الملكي
         divider = "╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼╼"
         footer = "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n*نظام محجوب أونلاين | سوقك الذكي*"
 
-        # صياغة الرسالة النهائية (التنسيق المطلوب بالضبط)
         msg = (
             "✨ *إشعار نظام: تم إنشاء طلب جديد* ✨\n\n"
             f"🧾 *فاتورة رقم:* `{order_handle}`\n"
@@ -74,13 +70,13 @@ def mahjoub_online_v44():
             f"{extra_note}\n"
             f"{divider}\n"
             f"🕒 *توقيت الطلب:* `{full_time}`\n"
-            f"🔗 *رابط التتبع:* {tracking_link}\n\n"
+            f"🔗 *رابط تتبع الطلب والفاتورة:* \n{tracking_link}\n\n"
             f"📦 *مرفق أدناه رابط فاتورة PDF إلكترونية لطلبكم:*\n"
-            f"{tracking_link}\n" # توجيه العميل لنفس الرابط لتحميل PDF
-            f"\n{footer}"
+            f"{tracking_link}\n\n"
+            f"{footer}"
         )
 
-        # تنفيذ الإرسال عبر API TextMeBot
+        # الإرسال الفعلي
         if phone and len(phone) > 5:
             api_url = f"https://api.textmebot.com/send.php?recipient={phone}&apikey={TEXTMEBOT_API_KEY}&text={urllib.parse.quote(msg)}"
             requests.get(api_url, timeout=10)
@@ -90,5 +86,5 @@ def mahjoub_online_v44():
         return jsonify({"status": "error", "message": str(e)}), 200
 
 if __name__ == '__main__':
-    # التشغيل على بورت 10000 كما هو محدد في Render
+    # بورت 10000 الخاص بـ Render
     app.run(host='0.0.0.0', port=10000)
