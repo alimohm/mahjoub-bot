@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify
 import requests
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta  # أضفنا timedelta هنا
 import json
 import re
 
@@ -18,7 +18,6 @@ def smart_parse(data):
 
 def get_real_text(val):
     txt = str(val).strip()
-    # استبعاد القيم الفارغة أو القيم البرمجية (IDs) الطويلة جداً
     if not txt or txt.lower() in ['none', 'null', '', 'false']: return None
     if len(txt) >= 20 and re.match(r'^[a-f0-9]+$', txt): return None
     return txt
@@ -36,8 +35,12 @@ def mahjoub_auto_receipt_v38():
         order_id = order.get('handel', '0000')
         phone = str(customer.get('phone1', '')).replace('+', '').replace(' ', '')
         tracking_link = f"https://mahjoub.online/customer/thank-you/{order_id}"
-        full_time = datetime.now().strftime("%Y/%m/%d - %H:%M:%S")
-
+        
+        # --- تعديل التوقيت ليكون بتوقيت اليمن (GMT+3) ---
+        yemen_time = datetime.utcnow() + timedelta(hours=3)
+        full_time = yemen_time.strftime("%Y/%m/%d - %I:%M %p") 
+        # ملاحظة: %I:%M %p ستعرض الوقت بنظام 12 ساعة (مثلاً 01:36 PM)
+        
         status_info = smart_parse(order.get('status', {}))
         status_title = status_info.get('title', 'قيد الإنتظار')
         is_paid = order.get('isPaid', False)
@@ -57,15 +60,13 @@ def mahjoub_auto_receipt_v38():
         footer = "⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n*نظام محجوب أونلاين | سوقك الذكي*"
 
         if event == "order.created":
-            # --- سحب العنوان أوتوماتيكياً بالكامل ---
             country = get_real_text(customer.get('countryName'))
             city = get_real_text(customer.get('cityName'))
             district = get_real_text(customer.get('district')) or get_real_text(customer.get('address1'))
             street = get_real_text(customer.get('street')) or get_real_text(customer.get('address2'))
             
-            # دمج الأجزاء المتوفرة فقط
             addr_parts = [p for p in [country, city, district, street] if p]
-            full_address = " - ".join(addr_parts) if addr_parts else "اليمن (سيتم تحديد الموقع بدقة عند التواصل)"
+            full_address = " - ".join(addr_parts) if addr_parts else "اليمن"
             
             msg = (
                 "✨ *إشعار نظام: تم إنشاء طلب جديد* ✨\n\n"
@@ -81,7 +82,7 @@ def mahjoub_auto_receipt_v38():
                 f"📝 *حالة الدفع:* {pay_text}"
                 f"{extra_note}\n"
                 f"{divider}\n"
-                f"🕒 *التوقيت:* `{full_time}`\n"
+                f"🕒 *توقيت الطلب:* `{full_time}`\n"
                 f"🔗 *رابط التتبع:* {tracking_link}\n\n"
                 f"{footer}"
             )
@@ -94,7 +95,7 @@ def mahjoub_auto_receipt_v38():
                 f"📝 *حالة الدفع:* {pay_text}"
                 f"{extra_note}\n"
                 f"{divider}\n"
-                f"🕒 *التوقيت:* `{full_time}`\n"
+                f"🕒 *وقت التحديث:* `{full_time}`\n"
                 f"🔗 *تتبع:* {tracking_link}\n\n"
                 f"{footer}"
             )
